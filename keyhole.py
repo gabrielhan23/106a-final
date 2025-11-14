@@ -10,11 +10,11 @@ MATCH_THRESHOLD = 0.6
 
 # Template scale range as percentage of search area
 MIN_TEMPLATE_SIZE = 0.001  # 0.1% of search area
-MAX_TEMPLATE_SIZE = 0.01   # 1% of search area
+MAX_TEMPLATE_SIZE = 0.02   # 2% of search area
 NUM_SCALES = 20
 
 # === 1. Load Images ===
-image = cv2.imread("far.jpeg")
+image = cv2.imread("close.jpeg")
 template = cv2.imread("usbc_template.png")
 
 if image is None or template is None:
@@ -89,8 +89,12 @@ for pt in zip(*threshold_locations[::-1]):
 
 print(f"Found {len(threshold_locations[0])} points above threshold {MATCH_THRESHOLD}")
 
-# Now do multi-scale for finding all matches
+# Now do multi-scale for finding all matches and best scale heatmap
 print(f"\nSearching at scales {min_scale:.3f} to {max_scale:.3f}...")
+
+best_correlation_map = None
+best_scale_match = None
+best_max_score = -1
 
 for scale in np.linspace(min_scale, max_scale, NUM_SCALES)[::-1]:
     # Resize template
@@ -103,6 +107,13 @@ for scale in np.linspace(min_scale, max_scale, NUM_SCALES)[::-1]:
     
     # Template matching (TM_CCOEFF_NORMED is good for contrast matching)
     result = cv2.matchTemplate(search_gray, resized, cv2.TM_CCOEFF_NORMED)
+    
+    # Track best scale for heatmap
+    max_val = result.max()
+    if max_val > best_max_score:
+        best_max_score = max_val
+        best_correlation_map = result
+        best_scale_match = scale
     
     # Find all matches above threshold
     locations = np.where(result >= MATCH_THRESHOLD)
@@ -164,7 +175,30 @@ def non_max_suppression(matches, overlap_thresh=0.3):
 filtered_matches = non_max_suppression(all_matches, overlap_thresh=0.3)
 print(f"After removing overlaps: {len(filtered_matches)} unique matches")
 
-# === 5. Draw Results ===
+# === 5. Create Heatmap for Best Match Scale ===
+print(f"\nBest match found at scale {best_scale_match:.3f} with score {best_max_score:.3f}")
+
+# Create heatmap for the best scale
+correlation_normalized = ((best_correlation_map - best_correlation_map.min()) / 
+                          (best_correlation_map.max() - best_correlation_map.min()) * 255).astype(np.uint8)
+
+heatmap_best = cv2.applyColorMap(correlation_normalized, cv2.COLORMAP_JET)
+heatmap_best_resized = cv2.resize(heatmap_best, (search_gray.shape[1], search_gray.shape[0]), interpolation=cv2.INTER_LINEAR)
+
+search_region_color = cv2.cvtColor(search_gray, cv2.COLOR_GRAY2BGR)
+overlay_best = cv2.addWeighted(search_region_color, 0.4, heatmap_best_resized, 0.6, 0)
+
+# Mark the best match location
+best_loc = np.unravel_index(best_correlation_map.argmax(), best_correlation_map.shape)
+cv2.circle(overlay_best, (best_loc[1], best_loc[0]), 10, (255, 255, 255), 3)
+cv2.circle(overlay_best, (best_loc[1], best_loc[0]), 5, (0, 255, 0), -1)
+
+# Mark all matches above threshold
+threshold_locations_best = np.where(best_correlation_map >= MATCH_THRESHOLD)
+for pt in zip(*threshold_locations_best[::-1]):
+    cv2.circle(overlay_best, pt, 2, (255, 255, 255), -1)
+
+# === 6. Draw Results ===
 result_image = image.copy()
 
 colors = [(0, 255, 0), (255, 0, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
@@ -189,14 +223,15 @@ if SEARCH_REGION is not None:
 
 # Display
 cv2.imshow("1. Template", template_gray)
-cv2.imshow("2. Correlation Heatmap (white dots = above threshold)", overlay)
+cv2.imshow("2. Heatmap at Best Match Scale", overlay_best)
 cv2.imshow("3. Matches Found", result_image)
 
-print("\nHeatmap colors:")
+print("\nHeatmap (at best scale):")
 print("  RED/YELLOW = High correlation (good match)")
 print("  GREEN = Medium correlation")
 print("  BLUE/BLACK = Low correlation (poor match)")
 print("  WHITE DOTS = Above threshold")
+print("  GREEN DOT WITH WHITE RING = Best match location")
 
 cv2.waitKey(0)
 cv2.destroyAllWindows()
