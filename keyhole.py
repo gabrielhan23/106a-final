@@ -3,7 +3,7 @@ import numpy as np
 
 # === Configuration ===
 # Search region: (x, y, width, height) or None for full image
-SEARCH_REGION = (1000, 1000, 1000, 1000)
+SEARCH_REGION = (1200, 1200, 1500, 1500)
 
 # Match threshold: 0.0 to 1.0 (higher = stricter)
 MATCH_THRESHOLD = 0.6
