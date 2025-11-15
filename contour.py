@@ -2,15 +2,15 @@ import cv2
 import numpy as np
 
 # --- Input Mode ---
-USE_IMAGE = True       # Set to True to use an image file, False to use webcam
-IMAGE_PATH = "far.jpeg"  # Path to the image file (only used if USE_IMAGE is True)
+USE_IMAGE = False       # Set to True to use an image file, False to use webcam
+IMAGE_PATH = "daniel.jpeg"  # Path to the image file (only used if USE_IMAGE is True)
 
 # --- You can tune these parameters ---
 MIN_AREA = 100         # The minimum size of the port (in pixels) to be considered
 MIN_OVAL_RATIO = 0.2    # The "oval-ness". 1.0 is a perfect circle, 0.1 is a thin line.
 MAX_OVAL_RATIO = 0.5    # We don't want perfect circles, so we set a max.
 CANNY_LOW = 20          # Low threshold for edge detection (lowered for better low-light detection)
-CANNY_HIGH = 60         # High threshold for edge detection (lowered for better low-light detection)
+CANNY_HIGH = 100         # High threshold for edge detection (lowered for better low-light detection)
 MAX_ELLIPSE_FIT_ERROR_RATIO = 0.5  # Maximum average distance as ratio of ellipse size (e.g., 0.15 = 15% of perimeter)
 
 # --- Distance estimation parameters ---
@@ -55,26 +55,30 @@ while True:
     # Convert to grayscale for shape detection
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     # Apply a stronger blur to smooth out small edges and preserve large continuous shapes
-    blur = cv2.GaussianBlur(gray, (15, 15), 0)
+    # blur = cv2.GaussianBlur(gray, (9, 9), 0)
+    blur = gray 
 
     # 2. Robust Thresholding
     # We use THRESH_BINARY_INV to make the dark holes (shadows) 
     # white, and the lighter block black.
     # THRESH_OTSU automatically finds the best threshold value,
     # which makes this robust to lighting changes.
-    (T, thresh) = cv2.threshold(blur, 0, 255, 
-                               cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    (T, thresh) = cv2.threshold(blur, 100, 255, cv2.THRESH_BINARY_INV)
 
     # 3. Morphological Opening (Cleanup)
     # This removes small white specks (noise) that aren't holes.
     # You can increase the kernel size to remove larger noise.
-    morph_kernel_size = 5
+    morph_kernel_size = 9
     kernel = np.ones((morph_kernel_size, morph_kernel_size), np.uint8)
     morphed = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
 
+    morph_kernel_size = 5
+    kernel = np.ones((morph_kernel_size, morph_kernel_size), np.uint8)
+    closing = cv2.morphologyEx(morphed, cv2.MORPH_CLOSE, kernel)
+
     # 4. Edge Detection
     # Use Canny edge detection to find the outlines of shapes
-    edges = cv2.Canny(morphed, CANNY_LOW, CANNY_HIGH)
+    edges = cv2.Canny(closing, CANNY_LOW, CANNY_HIGH)
 
     # 3. Find Contours (Shapes)
     # Find all the continuous outlines in the edge map
